@@ -1,0 +1,763 @@
+#include <iostream>
+#include <vector>
+#include <iomanip>      // Для форматування виводу
+#include <type_traits>  // Для перетворення типів
+#include <limits>       // Для обробки вводу
+#include <stdexcept>    // Для винятків
+
+template<typename T>
+class Image {
+private:
+    std::vector<std::vector<T>> data;  // Двовимірний масив даних
+    size_t width;   // Ширина зображення (кількість стовпців)
+    size_t height;  // Висота зображення (кількість рядків)
+
+public:
+    // Конструктори:
+    Image() : width(0), height(0) {}
+    Image(size_t height, size_t width, const T& defaultValue = T());  // Параметрами
+    Image(const Image<T>& other);  // Копіювання
+    
+    // Шаблонний конструктор для перетворення типів
+    template<typename U>
+    Image(const Image<U>& other);
+
+    // Методи вводу/виводу:
+    void input();
+    void print() const;
+
+    // Методи доступу до пікселів
+    void setPixel(size_t row, size_t col, const T& value);  // Встановлення значення пікселя
+    T getPixel(size_t row, size_t col) const;  // Отримання значення пікселя
+    T& pixel(int row, int col);  // Доступ до пікселя з підтримкою від'ємних індексів
+    const T& pixel(int row, int col) const;  // Константний доступ до пікселя
+    
+    // Методи отримання розмірів:
+    size_t getHeight() const; 
+    size_t getWidth() const;
+
+    //Операції з іншими зображеннями:
+    template<typename U>
+    Image<typename std::common_type<T, U>::type> operator+(const Image<U>& other) const;  // Додавання
+
+    template<typename U>
+    Image<typename std::common_type<T, U>::type> operator-(const Image<U>& other) const;  // Віднімання
+
+    template<typename U>
+    Image<typename std::common_type<T, U>::type> operator*(const Image<U>& other) const;  // Множення
+
+    template<typename U>
+    Image<typename std::common_type<T, U>::type> operator/(const Image<U>& other) const;  // Ділення
+
+    // Операції зі скалярами:
+    template<typename Scalar>
+    Image<typename std::common_type<T, Scalar>::type> operator+(Scalar value) const;  // Додавання скаляра
+
+    template<typename Scalar>
+    Image<typename std::common_type<T, Scalar>::type> operator-(Scalar value) const;  // Віднімання скаляра
+
+    template<typename Scalar>
+    Image<typename std::common_type<T, Scalar>::type> operator*(Scalar value) const;  // Множення на скаляр
+
+    template<typename Scalar>
+    Image<typename std::common_type<T, Scalar>::type> operator/(Scalar value) const;  // Ділення на скаляр
+
+    //Операції об'єднання:
+    template<typename U>
+    Image<typename std::common_type<T, U>::type> concatHorizontal(const Image<U>& other) const;  // Горизонтальне об'єднання
+
+    template<typename U>
+    Image<typename std::common_type<T, U>::type> concatVertical(const Image<U>& other) const;  // Вертикальне об'єднання
+
+    //Методи для отримання підзображень:
+    template<int RowStart, int RowEnd, int ColStart, int ColEnd>
+    Image<T> subimage() const;  // Обрізання з шаблонними параметрами
+    
+    // Обрізання з параметрами часу виконання
+    Image<T> subimageDynamic(int rowStart, int rowEnd, int colStart, int colEnd) const;
+};
+
+// Конструктор з параметрами
+template<typename T>
+Image<T>::Image(size_t height, size_t width, const T& defaultValue)
+    : height(height), width(width), data(height, std::vector<T>(width, defaultValue)) {}
+
+// Конструктор копіювання
+template<typename T>
+Image<T>::Image(const Image<T>& other)
+    : height(other.height), width(other.width), data(other.data) {}
+
+// Шаблонний конструктор для перетворення типів
+template<typename T>
+template<typename U>
+Image<T>::Image(const Image<U>& other)
+    : height(other.getHeight()), width(other.getWidth()), data(height, std::vector<T>(width)) {
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            data[i][j] = static_cast<T>(other.getPixel(i, j));
+        }
+    }
+}
+
+// Метод вводу
+template<typename T>
+void Image<T>::input() {
+    std::cout << "Enter the image width.: ";
+    std::cin >> width;
+    std::cout << "Enter the image height.: ";
+    std::cin >> height;
+
+    data.resize(height, std::vector<T>(width));
+
+    std::cout << "Enter the pixel values. (" << width * height << " pieces):\n";
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            std::cin >> data[y][x];
+        }
+    }
+}
+
+// Вивід зображення у консоль
+template<typename T>
+void Image<T>::print() const {
+    for (const auto& row : data) {
+        for (const auto& elem : row) {
+            std::cout << std::setw(4) << elem << " ";
+        }
+        std::cout << std::endl;
+    }
+}
+
+// Встановлення значення пікселя
+template<typename T>
+void Image<T>::setPixel(size_t row, size_t col, const T& value) {
+    if (row < height && col < width) {
+        data[row][col] = value;
+    }
+}
+
+// Отримання значення пікселя
+template<typename T>
+T Image<T>::getPixel(size_t row, size_t col) const {
+    if (row < height && col < width) {
+        return data[row][col];
+    }
+    return T(); // Повертаємо значення за замовчуванням
+}
+
+// Доступ до пікселя з підтримкою від'ємних індексів
+template<typename T>
+T& Image<T>::pixel(int row, int col) {
+    if (row < 0) row += static_cast<int>(height);
+    if (col < 0) col += static_cast<int>(width);
+    return data[row][col];
+}
+
+// Константний доступ до пікселя
+template<typename T>
+const T& Image<T>::pixel(int row, int col) const {
+    if (row < 0) row += static_cast<int>(height);
+    if (col < 0) col += static_cast<int>(width);
+    return data[row][col];
+}
+
+// Отримання висоти зображення
+template<typename T>
+size_t Image<T>::getHeight() const {
+    return height;
+}
+
+// Отримання ширини зображення
+template<typename T>
+size_t Image<T>::getWidth() const {
+    return width;
+}
+
+// Операція додавання зображень
+template<typename T>
+template<typename U>
+Image<typename std::common_type<T, U>::type> Image<T>::operator+(const Image<U>& other) const {
+    using ResultType = typename std::common_type<T, U>::type;
+    if (height != other.getHeight() || width != other.getWidth()) {
+        throw std::invalid_argument("Image dimensions must match for the addition operation.");
+    }
+
+    Image<ResultType> result(height, width);
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(i, j, data[i][j] + other.getPixel(i, j));
+        }
+    }
+    return result;
+}
+
+// Операція віднімання зображень
+template<typename T>
+template<typename U>
+Image<typename std::common_type<T, U>::type> Image<T>::operator-(const Image<U>& other) const {
+    using ResultType = typename std::common_type<T, U>::type;
+    if (height != other.getHeight() || width != other.getWidth()) {
+        throw std::invalid_argument("Image dimensions must match for the subtraction operation.");
+    }
+
+    Image<ResultType> result(height, width);
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(i, j, data[i][j] - other.getPixel(i, j));
+        }
+    }
+    return result;
+}
+
+// Операція множення зображень
+template<typename T>
+template<typename U>
+Image<typename std::common_type<T, U>::type> Image<T>::operator*(const Image<U>& other) const {
+    using ResultType = typename std::common_type<T, U>::type;
+    if (height != other.getHeight() || width != other.getWidth()) {
+        throw std::invalid_argument("Image dimensions must match for the multiplication operation.");
+    }
+
+    Image<ResultType> result(height, width);
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(i, j, data[i][j] * other.getPixel(i, j));
+        }
+    }
+    return result;
+}
+
+// Операція ділення зображень
+template<typename T>
+template<typename U>
+Image<typename std::common_type<T, U>::type> Image<T>::operator/(const Image<U>& other) const {
+    using ResultType = typename std::common_type<T, U>::type;
+    if (height != other.getHeight() || width != other.getWidth()) {
+        throw std::invalid_argument("Image dimensions must match for the division operation.");
+    }
+
+    Image<ResultType> result(height, width);
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            if (other.getPixel(i, j) == 0) {
+                throw std::runtime_error("Division by zero.");
+            }
+            result.setPixel(i, j, data[i][j] / other.getPixel(i, j));
+        }
+    }
+    return result;
+}
+
+// Операція додавання скаляра
+template<typename T>
+template<typename Scalar>
+Image<typename std::common_type<T, Scalar>::type> Image<T>::operator+(Scalar value) const {
+    using ResultType = typename std::common_type<T, Scalar>::type;
+    Image<ResultType> result(height, width);
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(i, j, data[i][j] + value);
+        }
+    }
+    return result;
+}
+
+// Операція віднімання скаляра
+template<typename T>
+template<typename Scalar>
+Image<typename std::common_type<T, Scalar>::type> Image<T>::operator-(Scalar value) const {
+    using ResultType = typename std::common_type<T, Scalar>::type;
+    Image<ResultType> result(height, width);
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(i, j, data[i][j] - value);
+        }
+    }
+    return result;
+}
+
+// Операція множення на скаляр
+template<typename T>
+template<typename Scalar>
+Image<typename std::common_type<T, Scalar>::type> Image<T>::operator*(Scalar value) const {
+    using ResultType = typename std::common_type<T, Scalar>::type;
+    Image<ResultType> result(height, width);
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(i, j, data[i][j] * value);
+        }
+    }
+    return result;
+}
+
+// Операція ділення на скаляр
+template<typename T>
+template<typename Scalar>
+Image<typename std::common_type<T, Scalar>::type> Image<T>::operator/(Scalar value) const {
+    using ResultType = typename std::common_type<T, Scalar>::type;
+    if (value == 0) {
+        throw std::runtime_error("Division by zero.");
+    }
+    Image<ResultType> result(height, width);
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(i, j, data[i][j] / value);
+        }
+    }
+    return result;
+}
+
+// Горизонтальне об'єднання зображень
+template<typename T>
+template<typename U>
+Image<typename std::common_type<T, U>::type> Image<T>::concatHorizontal(const Image<U>& other) const {
+    using ResultType = typename std::common_type<T, U>::type;
+    if (height != other.getHeight()) {
+        throw std::invalid_argument("Image heights must match for horizontal merging.");
+    }
+
+    size_t new_width = width + other.getWidth();
+    Image<ResultType> result(height, new_width);
+
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(i, j, static_cast<ResultType>(data[i][j]));
+        }
+        for (size_t j = 0; j < other.getWidth(); ++j) {
+            result.setPixel(i, width + j, static_cast<ResultType>(other.getPixel(i, j)));
+        }
+    }
+
+    return result;
+}
+
+// Вертикальне об'єднання зображень
+template<typename T>
+template<typename U>
+Image<typename std::common_type<T, U>::type> Image<T>::concatVertical(const Image<U>& other) const {
+    using ResultType = typename std::common_type<T, U>::type;
+    if (width != other.getWidth()) {
+        throw std::invalid_argument("Image widths must match for vertical merging.");
+    }
+
+    size_t new_height = height + other.getHeight();
+    Image<ResultType> result(new_height, width);
+
+    for (size_t i = 0; i < height; ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(i, j, static_cast<ResultType>(data[i][j]));
+        }
+    }
+
+    for (size_t i = 0; i < other.getHeight(); ++i) {
+        for (size_t j = 0; j < width; ++j) {
+            result.setPixel(height + i, j, static_cast<ResultType>(other.getPixel(i, j)));
+        }
+    }
+
+    return result;
+}
+
+// Метод для отримання підзображення (шаблонна версія)
+template<typename T>
+template<int RowStart, int RowEnd, int ColStart, int ColEnd>
+Image<T> Image<T>::subimage() const {
+    // Функція для коректної обробки від'ємних індексів
+    auto fix_index = [](int index, size_t max) -> size_t {
+        return index < 0 ? static_cast<size_t>(static_cast<int>(max) + index) : static_cast<size_t>(index);
+    };
+
+    // Корегуємо межі обрізання
+    size_t r1 = fix_index(RowStart, height);
+    size_t r2 = fix_index(RowEnd, height);
+    size_t c1 = fix_index(ColStart, width);
+    size_t c2 = fix_index(ColEnd, width);
+
+    // Розраховуємо нові розміри
+    size_t new_height = static_cast<size_t>(std::abs(static_cast<int>(r2) - static_cast<int>(r1))) + 1;
+    size_t new_width = static_cast<size_t>(std::abs(static_cast<int>(c2) - static_cast<int>(c1))) + 1;
+
+    // Створюємо нове зображення
+    Image<T> result(new_height, new_width);
+
+    // Визначаємо напрямок обходу
+    int row_step = (r1 <= r2) ? 1 : -1;
+    int col_step = (c1 <= c2) ? 1 : -1;
+
+    // Копіюємо дані
+    for (size_t i = 0; i < new_height; ++i) {
+        for (size_t j = 0; j < new_width; ++j) {
+            int src_row = static_cast<int>(r1) + static_cast<int>(i) * row_step;
+            int src_col = static_cast<int>(c1) + static_cast<int>(j) * col_step;
+            result.setPixel(i, j, data[src_row][src_col]);
+        }
+    }
+
+    return result;
+}
+
+// Метод для отримання підзображення (динамічна версія)
+template<typename T>
+Image<T> Image<T>::subimageDynamic(int rowStart, int rowEnd, int colStart, int colEnd) const {
+    // Функція для коректної обробки від'ємних індексів
+    auto fix_index = [](int index, size_t max) -> size_t {
+        return index < 0 ? static_cast<size_t>(static_cast<int>(max) + index) : static_cast<size_t>(index);
+    };
+
+    // Корегуємо межі обрізання
+    size_t r1 = fix_index(rowStart, height);
+    size_t r2 = fix_index(rowEnd, height);
+    size_t c1 = fix_index(colStart, width);
+    size_t c2 = fix_index(colEnd, width);
+
+    // Розраховуємо нові розміри
+    size_t new_height = static_cast<size_t>(std::abs(static_cast<int>(r2) - static_cast<int>(r1))) + 1;
+    size_t new_width = static_cast<size_t>(std::abs(static_cast<int>(c2) - static_cast<int>(c1))) + 1;
+
+    // Створюємо нове зображення
+    Image<T> result(new_height, new_width);
+
+    // Визначаємо напрямок обходу
+    int row_step = (r1 <= r2) ? 1 : -1;
+    int col_step = (c1 <= c2) ? 1 : -1;
+
+    // Копіюємо дані
+    for (size_t i = 0; i < new_height; ++i) {
+        for (size_t j = 0; j < new_width; ++j) {
+            int src_row = static_cast<int>(r1) + static_cast<int>(i) * row_step;
+            int src_col = static_cast<int>(c1) + static_cast<int>(j) * col_step;
+            result.setPixel(i, j, data[src_row][src_col]);
+        }
+    }
+
+    return result;
+}
+
+// Очищення вводу
+void clearInput() {
+    std::cin.clear();
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+}
+
+void printMenu() {
+    std::cout << "\nImage operations menu:\n";
+    std::cout << "1. Create a new image\n";
+    std::cout << "2. Display the image\n";
+    std::cout << "3. Horizontally merge images\n";
+    std::cout << "4. Vertically merge images\n";
+    std::cout << "5. Add images\n";
+    std::cout << "6. Multiply the image by a scalar\n";
+    std::cout << "7. Crop the image\n";
+    std::cout << "8. Subtract one image from another\n";
+    std::cout << "9. Divide one image by another\n";
+    std::cout << "10. Subtract a scalar from the image\n";
+    std::cout << "11. Divide the image by a scalar\n";
+    std::cout << "0. Exit\n";
+    std::cout << "Your choice: ";
+}
+
+int main() {
+    Image<int>* img1 = nullptr;
+    Image<int>* img2 = nullptr;
+    
+    // Головний цикл меню
+    int choice;
+    do {
+        printMenu();
+        std::cin >> choice;
+        
+        // Обробка помилок вводу
+        if (std::cin.fail()) {
+            clearInput();
+            std::cout << "Invalid input. Please try again.\n";
+            continue;
+        }
+
+        switch (choice) {
+        case 1: {
+            // Створення нового зображення
+            if (img1 == nullptr) {
+                img1 = new Image<int>();
+                std::cout << "Creating the first image:\n";
+                img1->input();
+            } else if (img2 == nullptr) {
+                img2 = new Image<int>();
+                std::cout << "Creating the second image:\n";
+                img2->input();
+            } else {
+                std::cout << "Both images have already been created.\n";
+            }
+            break;
+        }
+
+        case 2: {
+            // Вивід зображень
+            if (img1 != nullptr) {
+                std::cout << "Image 1:\n";
+                img1->print();
+            } else {
+                std::cout << "The first image is not created!\n";
+            }
+            if (img2 != nullptr) {
+                std::cout << "Image 2:\n";
+                img2->print();
+            } else {
+                std::cout << "The second image is not created!\n";
+            }
+            break;
+        } 
+        
+        case 3: {
+            // Горизонтальне об'єднання
+            if (img1 == nullptr || img2 == nullptr) {
+                std::cout << "Both images must be created!\n";
+                break;
+            }
+            try {
+                auto imgH = img1->concatHorizontal(*img2);
+                std::cout << "Result of horizontal merging:\n";
+                imgH.print();
+            } catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << "\n";
+            }
+            break;
+        }
+
+        case 4: {
+            // Вертикальне об'єднання
+            if (img1 == nullptr || img2 == nullptr) {
+                std::cout << "Both images must be created!\n";
+                break;
+            }
+            try {
+                auto imgV = img1->concatVertical(*img2);
+                std::cout << "Result of vertical merging.:\n";
+                imgV.print();
+            } catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << "\n";
+            }
+            break;
+        }
+
+        case 5: {
+            // Додавання зображень
+            if (img1 == nullptr || img2 == nullptr) {
+                std::cout << "Both images must be created!\n";
+                break;
+            }
+            
+            int imgChoice1, imgChoice2;
+            std::cout << "Select the first image (1 or 2): ";
+            std::cin >> imgChoice1;
+            std::cout << "Select the second image (1 or 2): ";
+            std::cin >> imgChoice2;
+            
+            if (imgChoice1 < 1 || imgChoice1 > 2 || imgChoice2 < 1 || imgChoice2 > 2) {
+                std::cout << "Invalid image selection!\n";
+                break;
+            }
+            
+            Image<int>* selectedImg1 = (imgChoice1 == 1) ? img1 : img2;
+            Image<int>* selectedImg2 = (imgChoice2 == 1) ? img1 : img2;
+            
+            try {
+                auto imgAdd = *selectedImg1 + *selectedImg2;
+                std::cout << "Result of image addition:\n";
+                imgAdd.print();
+            } catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << "\n";
+            }
+            break;
+        }
+
+        case 6: {
+            // Множення на скаляр
+            int imgChoice;
+            std::cout << "Select an image (1 or 2): ";
+            std::cin >> imgChoice;
+            
+            if (imgChoice < 1 || imgChoice > 2) {
+                std::cout << "Invalid image selection!\n";
+                break;
+            }
+            
+            Image<int>* selectedImg = (imgChoice == 1) ? img1 : img2;
+            
+            if (selectedImg == nullptr) {
+                std::cout << "The selected image is not created!\n";
+                break;
+            }
+            
+            double scalar;
+            std::cout << "Enter the scalar: ";
+            std::cin >> scalar;
+            if (std::cin.fail()) {
+                clearInput();
+                std::cout << "Invalid number.\n";
+                break;
+            }
+            try {
+                auto imgMul = *selectedImg * scalar;
+                std::cout << "Multiplication result:\n";
+                imgMul.print();
+            } catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << "\n";
+            }
+            break;
+        }
+
+        case 7: {
+            // Обрізання зображення
+            int imgChoice;
+            std::cout << "Select an image (1 or 2): ";
+            std::cin >> imgChoice;
+            
+            if (imgChoice < 1 || imgChoice > 2) {
+                std::cout << "Invalid image selection!\n";
+                break;
+            }
+            
+            Image<int>* selectedImg = (imgChoice == 1) ? img1 : img2;
+            
+            if (selectedImg == nullptr) {
+                std::cout << "The selected image is not created!\n";
+                break;
+            }
+            
+            int r1, r2, c1, c2;
+            std::cout << "Enter the cropping boundaries (rows r1 r2, columns c1 c2): ";
+            std::cin >> r1 >> r2 >> c1 >> c2;
+            if (std::cin.fail()) {
+                clearInput();
+                std::cout << "Invalid boundaries.\n";
+                break;
+            }
+            try {
+                auto cropped = selectedImg->subimageDynamic(r1, r2, c1, c2);
+                std::cout << "Cropped image:\n";
+                cropped.print();
+            } catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << "\n";
+            }
+            break;
+        }
+
+        case 8: {
+            // Віднімання зображень
+            if (img1 == nullptr || img2 == nullptr) {
+                std::cout << "Both images must be created!\n";
+                break;
+            }
+
+            try {
+                auto imgSub = *img1 - *img2;
+                std::cout << "Subtraction result:\n";
+                imgSub.print();
+            } catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << "\n";
+            }
+            break;
+        }
+
+        case 9: {
+            // Ділення зображень
+            if (img1 == nullptr || img2 == nullptr) {
+                std::cout << "Both images must be created!\n";
+                break;
+            }
+
+            try {
+                auto imgDiv = *img1 / *img2;
+                std::cout << "Division result:\n";
+                imgDiv.print();
+            } catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << "\n";
+            }
+            break;
+        }
+
+        case 10: {
+            // Віднімання скаляра
+            int imgChoice;
+            std::cout << "Select an image (1 or 2): ";
+            std::cin >> imgChoice;
+
+            if (imgChoice < 1 || imgChoice > 2) {
+                std::cout << "Invalid image selection!\n";
+                break;
+            }
+
+            Image<int>* selectedImg = (imgChoice == 1) ? img1 : img2;
+
+            if (selectedImg == nullptr) {
+                std::cout << "The selected image is not created!\n";
+                break;
+            }
+
+            int scalar;
+            std::cout << "Enter the scalar: ";
+            std::cin >> scalar;
+
+            try {
+                auto imgSub = *selectedImg - scalar;
+                std::cout << "Result of scalar subtraction:\n";
+                imgSub.print();
+            } catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << "\n";
+            }
+            break;
+        }
+
+        case 11: {
+            // Ділення на скаляр
+            int imgChoice;
+            std::cout << "Select an image (1 or 2): ";
+            std::cin >> imgChoice;
+
+            if (imgChoice < 1 || imgChoice > 2) {
+                std::cout << "Invalid image selection!\n";
+                break;
+            }
+
+            Image<int>* selectedImg = (imgChoice == 1) ? img1 : img2;
+
+            if (selectedImg == nullptr) {
+                std::cout << "The selected image is not created!\n";
+                break;
+            }
+
+            double scalar;
+            std::cout << "Enter a scalar (not 0): ";
+            std::cin >> scalar;
+
+            if (scalar == 0.0) {
+                std::cout << "Division by zero is not allowed!\n";
+                break;
+            }
+
+            try {
+                auto imgDiv = *selectedImg / scalar;
+                std::cout << "Division result.:\n";
+                imgDiv.print();
+            } catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << "\n";
+            }
+            break;
+        }
+
+        case 0:
+            // Вихід
+            std::cout << "Exit the program.\n";
+            delete img1;
+            delete img2;
+            break;
+
+        default:
+            // Невідома команда
+            std::cout << "Unknown choice. Please try again..\n";
+        }
+
+    } while (choice != 0);
+
+    return 0;
+}
